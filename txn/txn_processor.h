@@ -29,7 +29,7 @@ using std::string;
 enum CCMode {
   SERIAL = 0,                  // Serial transaction execution (no concurrency)
   LOCKING_EXCLUSIVE_ONLY = 1,  // Part 1A
-  OCC = 3,                     // Part 2
+  OCC = 2,                     // Part 2
 };
 
 // Returns a human-readable string naming of the providing mode.
