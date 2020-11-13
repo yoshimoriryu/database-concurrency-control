@@ -278,47 +278,108 @@ bool TxnProcessor::OCCValidateTransaction(const Txn &txn) const {
   return true;
 }
 
-void TxnProcessor::RunOCCScheduler() {
-  // Fetch transaction requests, and immediately begin executing them.
-  while (tp_.Active()) {
-    Txn *txn;
-    if (txn_requests_.Pop(&txn)) {
-
-      // Start txn running in its own thread.
-      tp_.RunTask(new Method<TxnProcessor, void, Txn*>(
-                  this,
-                  &TxnProcessor::ExecuteTxn,
-                  txn));
+void TxnProcessor::RunOCCScheduler()
+{
+  //
+  // Implement this method!
+  //
+  // [For now, run serial scheduler in order to make it through the test
+  // suite]
+  // Get the next new transaction request (if one is pending) and pass it to an execution thread.
+  // Deal with all transactions that have finished running (see below).
+  // Record start time
+  // Perform "read phase" of transaction:
+  //    Read all relevant data from storage
+  //    Execute the transaction logic (i.e. call Run() on the transaction)
+  Txn *txn;
+  while (tp_.Active())
+  {
+    if (txn_requests_.Pop(&txn))
+    {
+      txn->occ_start_time_ = GetTime();
+      tp_.RunTask(new Method<TxnProcessor, void, Txn *>(
+          this,
+          &TxnProcessor::ExecuteTxn,
+          txn));
     }
 
-    // Validate completed transactions, serially
-    Txn *finished;
-    while (completed_txns_.Pop(&finished)) {
-      if (finished->Status() == COMPLETED_A) {
-        finished->status_ = ABORTED;
-      } else {
-        bool valid = OCCValidateTransaction(*finished);
-        if (!valid) {
-          // Cleanup and restart
-          finished->reads_.empty();
-          finished->writes_.empty();
-          finished->status_ = INCOMPLETE;
+    // Dealing with a finished transaction (you must write this code):
+    // Validation phase :
+    // for (each record whose key appears in the txn's read and write sets) {
+    // if (the record was last updated AFTER this transaction's start time) {
+    // Validation fails!
+    // }
+    // }
 
+    while (completed_txns_.Pop(&txn))
+    {
+      if (txn->Status() == COMPLETED_A)
+      {
+        txn->status_ = ABORTED;
+        txn_results_.Push(txn);
+      }
+      else
+      {
+        // Commit/restart
+        // if (validation failed) {
+        // Cleanup txn
+        // Completely restart the transaction.
+        // } else {
+        // Apply all writes
+        // Mark transaction as committed
+        // )
+        // Validation for transaction
+        bool is_valid = true;
+        set<Key>::iterator key_it;
+        // Checking timestamp for read
+        for (key_it = txn->readset_.begin(); key_it != txn->readset_.end(); ++key_it)
+        {
+          if (storage_->Timestamp(*key_it) > txn->occ_start_time_)
+          {
+            is_valid = false;
+          }
+        }
+        // Checking timestamp for write
+        for (key_it = txn->writeset_.begin(); key_it != txn->writeset_.end(); ++key_it)
+        {
+          if (storage_->Timestamp(*key_it) > txn->occ_start_time_)
+          {
+            is_valid = false;
+          }
+        }
+
+        if (!is_valid)
+        {
+          // cleanup txn:
+          // txn->reads_.clear();
+          // txn->writes_.clear();
+          // txn->status_ = INCOMPLETE;
+          txn->reads_.clear();
+          txn->writes_.clear();
+          txn->status_ = INCOMPLETE;
+
+          // Restart txn:
+          // mutex_.Lock();
+          // txn->unique_id_ = next_unique_id_;
+          // next_unique_id_++;
+          // txn_requests_.Push(txn);
+          // mutex_.Unlock();
           mutex_.Lock();
           txn->unique_id_ = next_unique_id_;
           next_unique_id_++;
-          txn_requests_.Push(finished);
+          txn_requests_.Push(txn);
           mutex_.Unlock();
-        } else {
-          // Commit the transaction
-          ApplyWrites(finished);
+        }
+        else
+        {
+          ApplyWrites(txn);
           txn->status_ = COMMITTED;
+          txn_results_.Push(txn);
         }
       }
-
-      txn_results_.Push(finished);
     }
   }
+  // RunSerialScheduler();
 }
 
 void TxnProcessor::RunOCCParallelScheduler() {
