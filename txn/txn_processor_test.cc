@@ -14,7 +14,6 @@ string ModeToString(CCMode mode) {
     case SERIAL:                 return " Serial   ";
     case LOCKING_EXCLUSIVE_ONLY: return " Locking A";
     case OCC:                    return " OCC      ";
-    default:                     return "INVALID MODE";
   }
 }
 
